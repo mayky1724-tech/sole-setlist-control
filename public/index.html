@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>SOLÉ – SetlistControl</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:         #0a0a0b;
+    --bg2:        #111114;
+    --bg3:        #18181d;
+    --border:     rgba(255,255,255,0.07);
+    --border2:    rgba(255,255,255,0.13);
+    --text:       #f0f0f2;
+    --muted:      #6b6b7a;
+    --accent:     #c8ff3e;
+    --accent-dim: rgba(200,255,62,0.12);
+    --danger:     #ff4f4f;
+    --playing:    #3ef0a8;
+    --mono:       'Space Mono', monospace;
+    --sans:       'DM Sans', sans-serif;
+    --radius:     12px;
+    --radius-sm:  8px;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  /* ── Layout ─────────────────────────────────────── */
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+
+  /* ── Header ─────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  .logo span {
+    color: var(--muted);
+    font-weight: 400;
+  }
+
+  .conn-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 10px;
+    transition: all 0.3s;
+  }
+
+  .conn-badge.connected {
+    color: var(--playing);
+    border-color: rgba(62,240,168,0.25);
+    background: rgba(62,240,168,0.05);
+  }
+
+  .conn-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+
+  .conn-badge.connected .conn-dot {
+    background: var(--playing);
+    box-shadow: 0 0 6px var(--playing);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  /* ── Now Playing ────────────────────────────────── */
+  .now-playing {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+
+  .np-label {
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .np-song {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 28px;
+    margin-bottom: 10px;
+  }
+
+  .np-song.playing {
+    color: var(--accent);
+  }
+
+  .np-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .np-time {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .np-tempo {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .np-tempo span {
+    color: var(--text);
+    font-weight: 700;
+  }
+
+  /* ── Progress Bar ───────────────────────────────── */
+  .progress-wrap {
+    position: relative;
+    height: 3px;
+    background: var(--bg3);
+    border-radius: 2px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.5s linear;
+    width: 0%;
+  }
+
+  /* ── Transport ──────────────────────────────────── */
+  .transport {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .btn-transport {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .btn-transport:active { transform: scale(0.93); }
+
+  .btn-prev, .btn-next {
+    width: 52px;
+    height: 52px;
+    font-size: 22px;
+  }
+
+  .btn-play {
+    width: 72px;
+    height: 72px;
+    font-size: 28px;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0a0a0b;
+    border-radius: 50%;
+  }
+
+  .btn-play:hover { background: #d8ff5e; }
+
+  .btn-play.playing {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+  }
+
+  .btn-stop {
+    width: 52px;
+    height: 52px;
+    font-size: 18px;
+  }
+
+  /* ── Section Tabs ───────────────────────────────── */
+  .tabs {
+    display: flex;
+    padding: 0 20px;
+    gap: 2px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg2);
+  }
+
+  .tab {
+    flex: 1;
+    padding: 10px 8px;
+    font-size: 12px;
+    font-family: var(--mono);
+    letter-spacing: 0.08em;
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* ── Song List ──────────────────────────────────── */
+  .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel.active { display: flex; }
+
+  .song-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px 24px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .song-list::-webkit-scrollbar { width: 3px; }
+  .song-list::-webkit-scrollbar-track { background: transparent; }
+  .song-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .song-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 14px;
+    margin-bottom: 4px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .song-item:active { transform: scale(0.98); }
+
+  .song-item:hover {
+    border-color: var(--border2);
+    background: var(--bg3);
+  }
+
+  .song-item.active {
+    border-color: rgba(200,255,62,0.3);
+    background: rgba(200,255,62,0.05);
+  }
+
+  .song-item.active.playing {
+    border-color: rgba(200,255,62,0.5);
+    background: rgba(200,255,62,0.09);
+  }
+
+  .song-number {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 22px;
+    text-align: right;
+  }
+
+  .song-item.active .song-number {
+    color: var(--accent);
+  }
+
+  .song-info { flex: 1; min-width: 0; }
+
+  .song-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .song-item.active .song-name { color: var(--accent); }
+
+  .song-time-label {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .song-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: transparent;
+    flex-shrink: 0;
+  }
+
+  .song-item.active.playing .song-indicator {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse-dot 1.2s ease-in-out infinite;
+  }
+
+  .song-item.active:not(.playing) .song-indicator {
+    background: var(--accent);
+    opacity: 0.5;
+  }
+
+  /* ── Edit panel ──────────────────────────────────── */
+  .edit-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px 24px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .edit-hint {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    padding: 12px 0 4px;
+    font-family: var(--mono);
+  }
+
+  .edit-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 4px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: grab;
+    transition: all 0.15s;
+  }
+
+  .edit-item.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+  }
+
+  .edit-item.drag-over {
+    border-color: rgba(200,255,62,0.4);
+    background: rgba(200,255,62,0.06);
+  }
+
+  .drag-handle {
+    color: var(--muted);
+    font-size: 16px;
+    cursor: grab;
+    flex-shrink: 0;
+  }
+
+  .edit-number {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 22px;
+    text-align: right;
+  }
+
+  .edit-name {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  /* ── Empty / Disconnected states ─────────────────── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 12px;
+    color: var(--muted);
+    padding: 40px 24px;
+    text-align: center;
+  }
+
+  .empty-icon { font-size: 48px; opacity: 0.3; }
+
+  .empty-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+    opacity: 0.5;
+  }
+
+  .empty-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+    max-width: 280px;
+  }
+
+  /* SVG icons inline */
+  svg.icon {
+    width: 1em;
+    height: 1em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vertical-align: middle;
+  }
+
+  /* ── Ripple ──────────────────────────────────────── */
+  @keyframes ripple {
+    0%   { transform: scale(0); opacity: 0.4; }
+    100% { transform: scale(4); opacity: 0; }
+  }
+
+  /* ── Toast ───────────────────────────────────────── */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-size: 13px;
+    font-family: var(--mono);
+    padding: 10px 18px;
+    border-radius: 20px;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    z-index: 999;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">SOLÉ <span>/ setlist</span></div>
+    <div class="conn-badge" id="connBadge">
+      <div class="conn-dot"></div>
+      <span id="connText">conectando…</span>
+    </div>
+  </header>
+
+  <!-- Now Playing -->
+  <div class="now-playing">
+    <div class="np-label">Reproduciendo ahora</div>
+    <div class="np-song" id="npSong">—</div>
+    <div class="np-meta">
+      <div class="np-time" id="npTime">0:00</div>
+      <div class="np-tempo">BPM: <span id="npTempo">—</span></div>
+      <div class="np-time" id="npPosition"></div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+  </div>
+
+  <!-- Transport Controls -->
+  <div class="transport">
+    <button class="btn-transport btn-prev" id="btnPrev" title="Canción anterior">
+      <svg class="icon" viewBox="0 0 24 24"><polygon points="19,20 9,12 19,4"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+    </button>
+
+    <button class="btn-transport btn-play" id="btnPlay" title="Play / Stop">
+      <svg class="icon" id="iconPlay" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+    </button>
+
+    <button class="btn-transport btn-next" id="btnNext" title="Siguiente canción">
+      <svg class="icon" viewBox="0 0 24 24"><polygon points="5,4 15,12 5,20"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+    </button>
+
+    <button class="btn-transport btn-stop" id="btnStop" title="Stop">
+      <svg class="icon" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+    </button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="setlist">Setlist</div>
+    <div class="tab" data-tab="edit">Editar orden</div>
+  </div>
+
+  <!-- Setlist Panel -->
+  <div class="panel active" id="panelSetlist">
+    <div class="song-list" id="songList">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">♩</div>
+        <div class="empty-title">Sin canciones</div>
+        <div class="empty-desc">
+          Agrega locators en el Arrangement View de Ableton.<br>
+          Cada locator = una canción en el setlist.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Panel -->
+  <div class="panel" id="panelEdit">
+    <div class="edit-hint">Arrastra para reordenar el setlist</div>
+    <div class="edit-list" id="editList"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+
+let appState = {
+  isPlaying: false,
+  currentTime: 0,
+  tempo: 120,
+  songs: [],
+  activeSong: -1,
+  setlistOrder: [],
+  connected: false,
+};
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const connBadge   = document.getElementById('connBadge');
+const connText    = document.getElementById('connText');
+const npSong      = document.getElementById('npSong');
+const npTime      = document.getElementById('npTime');
+const npTempo     = document.getElementById('npTempo');
+const npPosition  = document.getElementById('npPosition');
+const progressBar = document.getElementById('progressBar');
+const btnPlay     = document.getElementById('btnPlay');
+const iconPlay    = document.getElementById('iconPlay');
+const btnStop     = document.getElementById('btnStop');
+const btnPrev     = document.getElementById('btnPrev');
+const btnNext     = document.getElementById('btnNext');
+const songList    = document.getElementById('songList');
+const emptyState  = document.getElementById('emptyState');
+const editList    = document.getElementById('editList');
+const toastEl     = document.getElementById('toast');
+
+// ── Socket events ─────────────────────────────────────────────────────────────
+socket.on('connect',    () => setConnected(true));
+socket.on('disconnect', () => setConnected(false));
+socket.on('state',      (s) => { appState = s; render(); });
+
+function setConnected(v) {
+  if (v) {
+    connBadge.classList.add('connected');
+    connText.textContent = 'ableton';
+  } else {
+    connBadge.classList.remove('connected');
+    connText.textContent = 'sin conexión';
+  }
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function render() {
+  const { songs, setlistOrder, activeSong, isPlaying, currentTime, tempo, connected } = appState;
+
+  // Connection badge
+  if (connected) setConnected(true);
+
+  // Now playing
+  const activeInOrder = setlistOrder.indexOf(activeSong);
+  const activeSongObj = songs[activeSong];
+
+  npSong.textContent = activeSongObj ? activeSongObj.name : '—';
+  npSong.className   = 'np-song' + (isPlaying ? ' playing' : '');
+
+  const songStart    = activeSongObj ? activeSongObj.time : 0;
+  const songElapsed  = Math.max(0, currentTime - songStart);
+  npTime.textContent = formatTime(songElapsed);
+  npTempo.textContent = tempo || '—';
+
+  // Position in setlist
+  if (activeInOrder >= 0) {
+    npPosition.textContent = `${activeInOrder + 1} / ${setlistOrder.length}`;
+  } else {
+    npPosition.textContent = '';
+  }
+
+  // Progress bar (within current song to next)
+  if (activeSongObj && songs.length > 1) {
+    const nextIdx  = setlistOrder[activeInOrder + 1];
+    const nextSong = songs[nextIdx];
+    if (nextSong) {
+      const songDuration = nextSong.time - activeSongObj.time;
+      const pct = Math.min(100, (songElapsed / songDuration) * 100);
+      progressBar.style.width = pct + '%';
+    } else {
+      progressBar.style.width = '0%';
+    }
+  } else {
+    progressBar.style.width = '0%';
+  }
+
+  // Play button state
+  if (isPlaying) {
+    btnPlay.classList.add('playing');
+    iconPlay.innerHTML = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+  } else {
+    btnPlay.classList.remove('playing');
+    iconPlay.innerHTML = '<polygon points="5,3 19,12 5,21"/>';
+  }
+
+  // Setlist
+  renderSetlist();
+  renderEditList();
+}
+
+function renderSetlist() {
+  const { songs, setlistOrder, activeSong, isPlaying } = appState;
+  if (!songs.length) {
+    emptyState.style.display = 'flex';
+    return;
+  }
+  emptyState.style.display = 'none';
+
+  // Only re-render if structure changed (perf optimization)
+  const currentCount = songList.querySelectorAll('.song-item').length;
+  if (currentCount !== setlistOrder.length) {
+    songList.innerHTML = '';
+    emptyState.style.display = 'none';
+    setlistOrder.forEach((songIdx, pos) => {
+      const song = songs[songIdx];
+      if (!song) return;
+      const el = document.createElement('div');
+      el.className = 'song-item';
+      el.dataset.songIdx = songIdx;
+      el.innerHTML = `
+        <div class="song-number">${pos + 1}</div>
+        <div class="song-info">
+          <div class="song-name">${escHtml(song.name)}</div>
+          <div class="song-time-label">${formatTime(song.time)}</div>
+        </div>
+        <div class="song-indicator"></div>
+      `;
+      el.addEventListener('click', () => jumpToSong(songIdx));
+      songList.appendChild(el);
+    });
+  } else {
+    // Just update classes
+    songList.querySelectorAll('.song-item').forEach((el) => {
+      const idx = parseInt(el.dataset.songIdx);
+      el.classList.toggle('active',   idx === activeSong);
+      el.classList.toggle('playing',  idx === activeSong && isPlaying);
+    });
+  }
+
+  // Scroll active item into view
+  const activeEl = songList.querySelector('.song-item.active');
+  if (activeEl) {
+    activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+// ── Edit / Drag-and-drop reorder ──────────────────────────────────────────────
+let dragSrcIdx = null;
+
+function renderEditList() {
+  const { songs, setlistOrder } = appState;
+  editList.innerHTML = '';
+  setlistOrder.forEach((songIdx, pos) => {
+    const song = songs[songIdx];
+    if (!song) return;
+    const el = document.createElement('div');
+    el.className = 'edit-item';
+    el.draggable = true;
+    el.dataset.pos = pos;
+    el.innerHTML = `
+      <div class="drag-handle">
+        <svg class="icon" style="width:18px;height:18px;" viewBox="0 0 24 24">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+          <line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+      </div>
+      <div class="edit-number">${pos + 1}</div>
+      <div class="edit-name">${escHtml(song.name)}</div>
+    `;
+
+    el.addEventListener('dragstart', (e) => {
+      dragSrcIdx = pos;
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', () => el.classList.remove('dragging'));
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      el.classList.add('drag-over');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      const targetPos = parseInt(el.dataset.pos);
+      if (dragSrcIdx === null || dragSrcIdx === targetPos) return;
+
+      const newOrder = [...appState.setlistOrder];
+      const [moved]  = newOrder.splice(dragSrcIdx, 1);
+      newOrder.splice(targetPos, 0, moved);
+      dragSrcIdx = null;
+      socket.emit('reorder', newOrder);
+      showToast('Orden guardado');
+    });
+
+    // Touch drag (mobile) – simplified swap on long-press
+    setupTouchDrag(el, pos);
+
+    editList.appendChild(el);
+  });
+}
+
+// Touch drag for mobile
+let touchDragPos  = null;
+let touchStartY   = null;
+let touchDragEl   = null;
+
+function setupTouchDrag(el, pos) {
+  let longPressTimer = null;
+
+  el.addEventListener('touchstart', (e) => {
+    touchStartY = e.touches[0].clientY;
+    longPressTimer = setTimeout(() => {
+      touchDragPos = pos;
+      touchDragEl  = el;
+      el.classList.add('dragging');
+    }, 350);
+  }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    clearTimeout(longPressTimer);
+    if (touchDragPos === null) return;
+    const y      = e.touches[0].clientY;
+    const items  = [...editList.querySelectorAll('.edit-item')];
+    const target = items.find((item) => {
+      const r = item.getBoundingClientRect();
+      return y >= r.top && y <= r.bottom;
+    });
+    if (target && target !== touchDragEl) {
+      items.forEach(i => i.classList.remove('drag-over'));
+      target.classList.add('drag-over');
+    }
+  }, { passive: true });
+
+  el.addEventListener('touchend', () => {
+    clearTimeout(longPressTimer);
+    if (touchDragPos === null) { touchDragEl = null; return; }
+    const items    = [...editList.querySelectorAll('.edit-item')];
+    const overItem = items.find(i => i.classList.contains('drag-over'));
+    items.forEach(i => { i.classList.remove('drag-over'); i.classList.remove('dragging'); });
+
+    if (overItem) {
+      const targetPos = parseInt(overItem.dataset.pos);
+      if (targetPos !== touchDragPos) {
+        const newOrder = [...appState.setlistOrder];
+        const [moved]  = newOrder.splice(touchDragPos, 1);
+        newOrder.splice(targetPos, 0, moved);
+        socket.emit('reorder', newOrder);
+        showToast('Orden guardado');
+      }
+    }
+    touchDragPos = null;
+    touchDragEl  = null;
+  });
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+btnPlay.addEventListener('click', () => {
+  if (appState.isPlaying) {
+    socket.emit('pause');
+  } else {
+    socket.emit('play');
+  }
+});
+
+btnStop.addEventListener('click', () => socket.emit('stop'));
+btnPrev.addEventListener('click', () => socket.emit('prev'));
+btnNext.addEventListener('click', () => socket.emit('next'));
+
+function jumpToSong(songIdx) {
+  socket.emit('jump', songIdx);
+  showToast('Saltando a ' + (appState.songs[songIdx]?.name || ''));
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel' + capitalize(tab.dataset.tab)).classList.add('active');
+  });
+});
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
+}
+
+// ── Keyboard shortcuts (desktop) ─────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); btnPlay.click(); }
+  if (e.code === 'ArrowRight') btnNext.click();
+  if (e.code === 'ArrowLeft')  btnPrev.click();
+});
+</script>
+</body>
+</html>
