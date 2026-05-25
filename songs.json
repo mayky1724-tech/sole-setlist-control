@@ -1,0 +1,17 @@
+[
+  { "name": "Sin Avisar",   "time": 0       },
+  { "name": "Quédate",      "time": 292     },
+  { "name": "Adiós",        "time": 672     },
+  { "name": "Amar=Perder",  "time": 1076    },
+  { "name": "Apaga la Luz", "time": 1638    },
+  { "name": "Déjame",       "time": 1990    },
+  { "name": "Sole",         "time": 2358    },
+  { "name": "Vendaval",     "time": 2822    },
+  { "name": "Huracán",      "time": 3226    },
+  { "name": "Que Quieres",  "time": 3914    },
+  { "name": "Se Acabó",     "time": 4337.25 },
+  { "name": "Mi lugar",     "time": 4918    },
+  { "name": "Laura",        "time": 5358    },
+  { "name": "Solo",         "time": 5414    },
+  { "name": "Intro",        "time": 5790    }
+]

@@ -26,6 +26,7 @@ const OSC_HOST        = '127.0.0.1';
 const POLL_INTERVAL   = 500;     // ms – how often to ask Ableton for state
 
 // ── State ─────────────────────────────────────────────────────────────────────
+let jumpLock = false;
 let state = {
   isPlaying:    false,
   currentTime:  0,       // seconds
@@ -83,9 +84,11 @@ function handleOSCMessage(address, args) {
       break;
 
     case '/live/song/get/current_song_time':
-      state.currentTime = args[0];
-      updateActiveSong();
-      broadcastState();
+      if (!jumpLock) {
+        state.currentTime = args[0];
+        updateActiveSong();
+        broadcastState();
+      }
       break;
 
     case '/live/song/get/tempo':
@@ -93,31 +96,7 @@ function handleOSCMessage(address, args) {
       broadcastState();
       break;
 
-    case '/live/song/get/cue_points': {
-      // AbletonOSC returns cue points as flat [time1, name1, time2, name2, ...]
-      const cues = [];
-      for (let i = 0; i < args.length; i += 2) {
-        const time = args[i];
-        const name = args[i + 1];
-        if (typeof time === 'number' && typeof name === 'string') {
-          cues.push({ time, name, index: cues.length });
-        }
-      }
-      cues.sort((a, b) => a.time - b.time);
-      // Re-index after sort
-      cues.forEach((c, i) => c.index = i);
-      state.songs = cues;
 
-      // Build default setlist order if empty or stale
-      const knownCount = state.setlistOrder.length;
-      const newCount   = cues.length;
-      if (knownCount === 0 || knownCount !== newCount) {
-        state.setlistOrder = cues.map((_, i) => i);
-        saveSetlist();
-      }
-      broadcastState();
-      break;
-    }
 
     default:
       break;
@@ -125,26 +104,66 @@ function handleOSCMessage(address, args) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// Track cue index by listening to jump_to_next/prev_cue results
+// We detect position by comparing currentTime to known cue beat positions
+// Once we learn real beat positions, we store them
+let cueBeats = {}; // { songIndex: beatValue }
+
 function updateActiveSong() {
   const t = state.currentTime;
+  if (t === undefined || t === null) return;
+
+  // Store current time against the closest song if within 8 beats
+  // This self-calibrates over time
+  for (let i = 0; i < state.songs.length; i++) {
+    const expected = state.songs[i].time;
+    if (Math.abs(t - expected) < 8) {
+      if (!cueBeats[i] || Math.abs(t - expected) < Math.abs(cueBeats[i] - expected)) {
+        cueBeats[i] = t;
+        state.songs[i].time = Math.round(t);
+      }
+    }
+  }
+
+  // Find active song by closest known beat position
   let active = -1;
-  for (let i = state.songs.length - 1; i >= 0; i--) {
-    if (t >= state.songs[i].time) {
-      active = i;
-      break;
+  let closest = Infinity;
+  for (let i = 0; i < state.songs.length; i++) {
+    const beat = state.songs[i].time;
+    if (t >= beat - 2) {
+      const dist = t - beat;
+      const nextBeat = i < state.songs.length - 1 ? state.songs[i+1].time : Infinity;
+      if (t < nextBeat && dist < closest) {
+        closest = dist;
+        active = i;
+      }
     }
   }
   state.activeSong = active;
 }
 
-function pollAbleton() {
-  sendOSC('/live/song/get/is_playing');
-  sendOSC('/live/song/get/current_song_time');
-  sendOSC('/live/song/get/tempo');
-  sendOSC('/live/song/get/cue_points');
+function loadSongsFile() {
+  const songsPath = path.join(__dirname, 'songs.json');
+  if (!fs.existsSync(songsPath)) { console.log('[Songs] songs.json no encontrado.'); return; }
+  try {
+    const songs = JSON.parse(fs.readFileSync(songsPath, 'utf8'));
+    state.songs = songs.map((s, i) => ({ ...s, index: i }));
+    if (state.setlistOrder.length !== songs.length) {
+      state.setlistOrder = songs.map((_, i) => i);
+      saveSetlist();
+    }
+    console.log('[Songs] ' + songs.length + ' canciones cargadas desde songs.json');
+    broadcastState();
+  } catch(e) { console.error('[Songs] Error:', e.message); }
 }
 
-// ── Express + Socket.io ───────────────────────────────────────────────────────
+function pollAbleton() {
+  sendOSC('/live/song/get/is_playing');
+  if (!jumpLock) sendOSC('/live/song/get/current_song_time');
+  sendOSC('/live/song/get/tempo');
+}
+
+
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
@@ -160,6 +179,39 @@ app.get('/', (req, res) => {
 // REST fallback for initial state
 app.get('/api/state', (req, res) => res.json(state));
 
+// Calibration page
+app.get('/calibrate', (req, res) => {
+  const songNames = JSON.stringify(state.songs.map(s => s.name));
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Calibrar</title>
+<style>
+body{background:#0a0a0b;color:#c8ff3e;font-family:monospace;padding:30px;}
+#beat{font-size:72px;font-weight:bold;margin:16px 0;color:#fff;}
+.row{display:flex;align-items:center;gap:10px;margin:6px 0;padding:10px;background:#111;border:1px solid #222;}
+.name{width:160px;color:#c8ff3e;}
+.val{background:#000;color:#fff;border:1px solid #444;padding:6px;width:100px;font-size:16px;}
+.btn{background:#c8ff3e;color:#000;border:none;padding:8px 14px;cursor:pointer;font-weight:bold;}
+</style></head><body>
+<h2>Beat actual:</h2>
+<div id="beat">—</div>
+<p>Mueve el cabezal en Ableton a cada cancion y presiona SET</p>
+<div id="songs"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const songs = ${songNames};
+let beat = 0;
+socket.on('state', s => { beat = s.currentTime; document.getElementById('beat').textContent = beat.toFixed(1); });
+const c = document.getElementById('songs');
+songs.forEach((n,i) => {
+  const d = document.createElement('div');
+  d.className = 'row';
+  d.innerHTML = '<span class="name">'+n+'</span><input class="val" id="v'+i+'" /><button class="btn" onclick="document.getElementById('v'+i+"').value=beat.toFixed(1)">SET</button>";
+  c.appendChild(d);
+});
+</script></body></html>`);
+});
+
 // ── Socket.io events ──────────────────────────────────────────────────────────
 function broadcastState() {
   io.emit('state', state);
@@ -174,15 +226,31 @@ io.on('connection', (socket) => {
   socket.on('stop',  () => sendOSC('/live/song/stop_playing'));
   socket.on('pause', () => sendOSC('/live/song/stop_playing'));
 
-  // ── Jump to song by its index in state.songs[]
+  // ── Jump to song by beat position
   socket.on('jump', (songIndex) => {
     const song = state.songs[songIndex];
     if (!song) return;
-    sendOSC('/live/song/set/current_song_time', song.time);
-    // Small delay then auto-play if not already playing
+    const wasPlaying = state.isPlaying;
+    // Stop polling completely to prevent overwrite
+    stopPolling();
+    jumpLock = true;
+    // Send jump command multiple times to ensure it lands
+    sendOSC('/live/song/set/current_song_time', parseFloat(song.time));
+    setTimeout(() => sendOSC('/live/song/set/current_song_time', parseFloat(song.time)), 100);
+    setTimeout(() => sendOSC('/live/song/set/current_song_time', parseFloat(song.time)), 200);
+    state.activeSong = songIndex;
+    state.currentTime = parseFloat(song.time);
+    broadcastState();
+    if (!wasPlaying) {
+      setTimeout(() => sendOSC('/live/song/start_playing'), 400);
+    } else {
+      setTimeout(() => sendOSC('/live/song/start_playing'), 400);
+    }
+    // Resume polling after 3 seconds
     setTimeout(() => {
-      if (!state.isPlaying) sendOSC('/live/song/start_playing');
-    }, 100);
+      jumpLock = false;
+      startPolling();
+    }, 3000);
   });
 
   // ── Reorder setlist
@@ -198,25 +266,31 @@ io.on('connection', (socket) => {
     const nextPos = pos + 1;
     if (nextPos < state.setlistOrder.length) {
       const nextIdx = state.setlistOrder[nextPos];
-      socket.emit('triggerJump', nextIdx);
-      sendOSC('/live/song/set/current_song_time', state.songs[nextIdx].time);
-      setTimeout(() => {
-        if (!state.isPlaying) sendOSC('/live/song/start_playing');
-      }, 100);
+      const song = state.songs[nextIdx];
+      if (song) {
+        jumpLock = true;
+        sendOSC('/live/song/set/current_song_time', parseFloat(song.time));
+        if (!state.isPlaying) setTimeout(() => sendOSC('/live/song/start_playing'), 200);
+        state.activeSong = nextIdx;
+        broadcastState();
+        setTimeout(() => { jumpLock = false; }, 1500);
+      }
     }
   });
 
   socket.on('prev', () => {
     const pos = state.setlistOrder.indexOf(state.activeSong);
-    // If >4 seconds in, restart current; else go to previous
-    const threshold = 4;
-    if (state.currentTime - (state.songs[state.activeSong]?.time || 0) > threshold) {
-      sendOSC('/live/song/set/current_song_time', state.songs[state.activeSong]?.time || 0);
-    } else {
-      const prevPos = pos - 1;
-      if (prevPos >= 0) {
-        const prevIdx = state.setlistOrder[prevPos];
-        sendOSC('/live/song/set/current_song_time', state.songs[prevIdx].time);
+    const prevPos = pos - 1;
+    if (prevPos >= 0) {
+      const prevIdx = state.setlistOrder[prevPos];
+      const song = state.songs[prevIdx];
+      if (song) {
+        jumpLock = true;
+        sendOSC('/live/song/set/current_song_time', parseFloat(song.time));
+        if (!state.isPlaying) setTimeout(() => sendOSC('/live/song/start_playing'), 200);
+        state.activeSong = prevIdx;
+        broadcastState();
+        setTimeout(() => { jumpLock = false; }, 1500);
       }
     }
   });
@@ -227,7 +301,17 @@ io.on('connection', (socket) => {
 });
 
 // ── Start polling ─────────────────────────────────────────────────────────────
-setInterval(pollAbleton, POLL_INTERVAL);
+loadSongsFile();
+let pollInterval = setInterval(pollAbleton, POLL_INTERVAL);
+
+function stopPolling() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+}
+function startPolling() {
+  if (!pollInterval) { pollInterval = setInterval(pollAbleton, POLL_INTERVAL); }
+}
+
+startPolling();
 pollAbleton();
 
 // ── Start server ──────────────────────────────────────────────────────────────

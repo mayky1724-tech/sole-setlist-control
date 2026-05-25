@@ -495,6 +495,119 @@
   }
 
   .toast.show { transform: translateX(-50%) translateY(0); }
+  /* ── Performance Panel ──────────────────────────── */
+  .perform-wrap {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    padding: 20px 20px 0;
+    gap: 0;
+    overflow: hidden;
+  }
+  .perform-current {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+  }
+  .perform-label {
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .perform-song-name {
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1.1;
+    margin-bottom: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .perform-meta {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 14px;
+  }
+  .perform-bpm {
+    font-family: var(--mono);
+    font-size: 16px;
+    color: var(--text);
+    font-weight: 700;
+  }
+  .perform-pos {
+    font-family: var(--mono);
+    font-size: 16px;
+    color: var(--muted);
+  }
+  .perform-progress-wrap {
+    width: 100%;
+    height: 4px;
+    background: var(--bg3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .perform-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.5s linear;
+  }
+  .perform-next-wrap {
+    padding: 16px 0;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .perform-next-name {
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .perform-transport {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 20px 0;
+  }
+  .perf-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    width: 64px;
+    height: 64px;
+  }
+  .perf-btn:active { transform: scale(0.93); }
+  .perf-play {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0a0a0b;
+  }
+  .perf-play.playing {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+  }
 </style>
 </head>
 <body>
@@ -547,6 +660,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="setlist">Setlist</div>
     <div class="tab" data-tab="edit">Editar orden</div>
+    <div class="tab" data-tab="perform">Performance</div>
   </div>
 
   <!-- Setlist Panel -->
@@ -567,6 +681,38 @@
   <div class="panel" id="panelEdit">
     <div class="edit-hint">Arrastra para reordenar el setlist</div>
     <div class="edit-list" id="editList"></div>
+  </div>
+
+  <!-- Performance Panel -->
+  <div class="panel" id="panelPerform">
+    <div class="perform-wrap">
+      <div class="perform-current">
+        <div class="perform-label">AHORA</div>
+        <div class="perform-song-name" id="perfName">—</div>
+        <div class="perform-meta">
+          <div class="perform-bpm" id="perfBpm">— BPM</div>
+          <div class="perform-pos" id="perfPos">— / —</div>
+        </div>
+        <div class="perform-progress-wrap">
+          <div class="perform-progress-bar" id="perfProgress"></div>
+        </div>
+      </div>
+      <div class="perform-next-wrap">
+        <div class="perform-label">SIGUIENTE</div>
+        <div class="perform-next-name" id="perfNext">—</div>
+      </div>
+      <div class="perform-transport">
+        <button class="perf-btn perf-prev" id="perfPrev">
+          <svg style="width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;" viewBox="0 0 24 24"><polygon points="19,20 9,12 19,4"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+        </button>
+        <button class="perf-btn perf-play" id="perfPlay">
+          <svg style="width:36px;height:36px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;" id="perfPlayIcon" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+        </button>
+        <button class="perf-btn perf-next" id="perfNext2">
+          <svg style="width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;" viewBox="0 0 24 24"><polygon points="5,4 15,12 5,20"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+        </button>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -608,7 +754,7 @@ const toastEl     = document.getElementById('toast');
 // ── Socket events ─────────────────────────────────────────────────────────────
 socket.on('connect',    () => setConnected(true));
 socket.on('disconnect', () => setConnected(false));
-socket.on('state',      (s) => { appState = s; render(); });
+socket.on('state',      (s) => { appState = s; render(); renderPerformance(); });
 
 function setConnected(v) {
   if (v) {
@@ -884,6 +1030,70 @@ function showToast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
 }
+
+// ── Performance Panel ────────────────────────────────────────────────────────
+const perfName     = document.getElementById('perfName');
+const perfBpm      = document.getElementById('perfBpm');
+const perfPos      = document.getElementById('perfPos');
+const perfProgress = document.getElementById('perfProgress');
+const perfNext     = document.getElementById('perfNext');
+const perfPlay     = document.getElementById('perfPlay');
+const perfPlayIcon = document.getElementById('perfPlayIcon');
+const perfPrev     = document.getElementById('perfPrev');
+const perfNext2    = document.getElementById('perfNext2');
+
+function renderPerformance() {
+  const { songs, setlistOrder, activeSong, isPlaying, currentTime, tempo } = appState;
+  const activeInOrder = setlistOrder.indexOf(activeSong);
+  const activeSongObj = songs[activeSong];
+
+  // Current song name
+  perfName.textContent = activeSongObj ? activeSongObj.name : '—';
+
+  // BPM and position
+  perfBpm.textContent = tempo ? tempo + ' BPM' : '— BPM';
+  perfPos.textContent = activeInOrder >= 0 ? (activeInOrder + 1) + ' / ' + setlistOrder.length : '— / —';
+
+  // Progress bar
+  const songStart = activeSongObj ? activeSongObj.time : 0;
+  const songElapsed = Math.max(0, currentTime - songStart);
+  const nextIdx = setlistOrder[activeInOrder + 1];
+  const nextSong = songs[nextIdx];
+  if (nextSong) {
+    const dur = nextSong.time - songStart;
+    perfProgress.style.width = Math.min(100, (songElapsed / dur) * 100) + '%';
+  } else {
+    perfProgress.style.width = '0%';
+  }
+
+  // Next song
+  if (nextSong) {
+    perfNext.textContent = nextSong.name;
+  } else {
+    perfNext.textContent = activeInOrder >= 0 ? 'Última canción' : '—';
+  }
+
+  // Play button
+  if (isPlaying) {
+    perfPlay.classList.add('playing');
+    perfPlayIcon.innerHTML = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+  } else {
+    perfPlay.classList.remove('playing');
+    perfPlayIcon.innerHTML = '<polygon points="5,3 19,12 5,21"/>';
+  }
+}
+
+perfPlay.addEventListener('click', () => {
+  if (appState.isPlaying) socket.emit('pause');
+  else socket.emit('play');
+});
+perfPrev.addEventListener('click', () => socket.emit('prev'));
+perfNext2.addEventListener('click', () => socket.emit('next'));
+
+// Hook into render
+const _origRender = render;
+// Override render to also update performance panel
+const origRender = render;
 
 // ── Keyboard shortcuts (desktop) ─────────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
