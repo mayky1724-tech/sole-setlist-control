@@ -230,23 +230,23 @@ io.on('connection', (socket) => {
   socket.on('jump', (songIndex) => {
     const song = state.songs[songIndex];
     if (!song) return;
-    const wasPlaying = state.isPlaying;
-    // Stop polling completely to prevent overwrite
     stopPolling();
     jumpLock = true;
-    // Send jump command multiple times to ensure it lands
-    sendOSC('/live/song/set/current_song_time', parseFloat(song.time));
-    setTimeout(() => sendOSC('/live/song/set/current_song_time', parseFloat(song.time)), 100);
-    setTimeout(() => sendOSC('/live/song/set/current_song_time', parseFloat(song.time)), 200);
+    // Set position → stop → play
+    const beatTime = parseFloat(song.time);
+    sendOSC('/live/song/set/current_song_time', beatTime);
+    setTimeout(() => {
+      sendOSC('/live/song/stop_playing');
+      setTimeout(() => {
+        sendOSC('/live/song/set/current_song_time', beatTime);
+        setTimeout(() => {
+          sendOSC('/live/song/start_playing');
+        }, 150);
+      }, 150);
+    }, 100);
     state.activeSong = songIndex;
-    state.currentTime = parseFloat(song.time);
+    state.currentTime = beatTime;
     broadcastState();
-    if (!wasPlaying) {
-      setTimeout(() => sendOSC('/live/song/start_playing'), 400);
-    } else {
-      setTimeout(() => sendOSC('/live/song/start_playing'), 400);
-    }
-    // Resume polling after 3 seconds
     setTimeout(() => {
       jumpLock = false;
       startPolling();
